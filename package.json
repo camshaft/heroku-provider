@@ -1,0 +1,21 @@
+{
+  "name": "heroku-provider",
+  "version": "0.1.0",
+  "description": "Reusable Heroku provider API app",
+  "main": "app.js",
+  "scripts": {
+    "test": "NODE_ENV=test ./node_modules/.bin/mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CamShaft/heroku-provider.git"
+  },
+  "author": "Cameron Bytheway <cameron@gmail.com>",
+  "license": "MIT",
+  "readmeFilename": "README.md",
+  "dependencies": {
+    "http-error": "0.0.1",
+    "debug": "~0.7.2",
+    "express": "~3.1.0"
+  }
+}

@@ -1,4 +1,4 @@
 heroku-provider
 ===============
 
-Heroku provider API reusable app
+Reusable Heroku provider API app
