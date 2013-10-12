@@ -1,7 +1,7 @@
 {
   "name": "heroku-provider",
-  "version": "0.2.0",
-  "description": "Reusable Heroku provider API app",
+  "version": "0.2.1",
+  "description": "Reusable Heroku provision API app",
   "main": "app.js",
   "scripts": {
     "test": "NODE_ENV=test ./node_modules/.bin/mocha"
