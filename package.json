@@ -17,6 +17,7 @@
     "http-error": "0.0.1",
     "debug": "~0.7.2",
     "metric-log": "~1.0.0",
-    "express": "~3.4.0"
+    "express": "~3.4.0",
+    "envs": "~0.1.4"
   }
 }

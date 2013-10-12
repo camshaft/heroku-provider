@@ -3,12 +3,13 @@
  */
 var express = require('express');
 var metric = require('metric-log');
+var envs = require('envs');
 var debug = require('debug')('heroku-provider');
 var HttpError = require('http-error').HttpError;
 
-module.exports = function(api, manifest) {
+module.exports = function(api, options) {
   if (!api) throw new Error('No api given to heroku provider');
-  if (!manifest) manifest = require(process.cwd() + '/addon-manifest');
+  if (!options) options = {};
 
   /**
    * Create the app
@@ -20,7 +21,9 @@ module.exports = function(api, manifest) {
    * Middleware
    */
 
-  var auth = express.basicAuth(manifest.id, manifest.api.password);
+  var auth = express.basicAuth(
+    options.username || envs('HEROKU_USERNAME', ''),
+    options.password || envs('HEROKU_PASSWORD', ''));
 
   /**
    * Configure the app
