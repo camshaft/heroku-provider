@@ -1,100 +1,112 @@
 /**
  * Module dependencies
  */
-var express = require("express")
-  , debug = require("debug")("heroku-provider")
-  , HttpError = require("http-error").HttpError;
+var express = require('express');
+var metric = require('metric-log');
+var debug = require('debug')('heroku-provider');
+var HttpError = require('http-error').HttpError;
 
-/**
- * Dummy metrics
- */
-function metrics () {}
-metrics.profile = function() {};
-metrics.context = function() {return metrics};
-
-module.exports = function(api, options) {
+module.exports = function(api, manifest) {
+  if (!api) throw new Error('No api given to heroku provider');
+  if (!manifest) manifest = require(process.cwd() + '/addon-manifest');
 
   /**
    * Create the app
    */
+
   var app = express();
 
   /**
    * Middleware
    */
-  var auth = express.basicAuth(options.username, options.password)
-    , sso = require("./sso")(options.salt);
+
+  var auth = express.basicAuth(manifest.id, manifest.api.password);
 
   /**
    * Configure the app
    */
-  app.configure(function() {
-    app.use(function dummyMetrics(req, res, next) {
-      req.metric = req.metric || metrics;
-      req._heroku_metric = req.metric.context({at: "provider", lib: "heroku-provider"});
-      next();
-    });
-    app.use(app.router);
-    app.use(function errorHandler(err, req, res, next) {
-      console.error(err);
-      res.status(err.code || 500);
-      res.send(err.toString());
-    });
+
+  app.use(function metrics(req, res, next) {
+    req._heroku_metric = (req.metric || metric).context({lib: 'heroku-provider'});
+    next();
+  });
+  app.use(app.router);
+  app.use(function errorHandler(err, req, res, next) {
+    console.error(err.stack || err);
+    res.status(err.code || 500);
+    res.send({message: err.toString()});
   });
 
   /**
    * Routes
    */
+
   // Provision
-  app.post("/resources", auth, function(req, res, next){
+  app.post('/resources', auth, function(req, res, next){
     debug(req.body);
-    req._heroku_metric.profile("provision-response-time");
+    var done = req._heroku_metric.profile('provision.create');
 
-    api.add(req.body, function(err, resource) {
-      req._heroku_metric.profile("provision-response-time", {err: err, fn:'add'});
-      if(err) return next(err);
+    var body = req.body;
+    var resource = {
+      heroku_id: body.heroku_id,
+      plan: body.plan,
+      callback_url: body.callback_url,
+      logplex_token: body.logplex_token,
+      options: body.options
+    };
 
-      req._heroku_metric("provision", 1, "instance", {plan: resource.plan});
-      res.send(resource);
+    api.create(resource, function(err, id, config) {
+      done({err: err, resource: id});
+      if (err) return next(err);
+      if (!id) return next(new HttpError('Resource was not created'), 500);
+      config = config || {};
+
+      req._heroku_metric.count('provision.' + resource.plan, 1, {resource: id});
+      res.send({
+        id: id,
+        config: config
+      });
     });
   });
 
   // Plan change
-  app.put("/resources/:id", auth, function(req, res, next){
+  app.put('/resources/:id', auth, function(req, res, next){
     debug(req.params, req.body);
-    req._heroku_metric.profile("provision-response-time");
+    var done = req._heroku_metric.profile('provision.update');
 
-    api.update(req.params.id, req.body, function(err, resource, prev) {
-      req._heroku_metric.profile("provision-response-time", {err:err, fn:'update'});
-      if(err) return next(err);
-      if(!resource) return next(new HttpError("Not Found", 404));
+    var id = req.params.id;
+    var request = {
+      plan: req.body.plan,
+      heroku_id: req.body.heroku_id
+    };
 
-      req._heroku_metric("plan-change", 1, 'resource', {plan: resource.plan, 'prev-plan': prev.plan});
-      res.send("ok");
+    api.update(id, request, function(err, prev, config, message) {
+      done({err: err, resource: id});
+      if (err) return next(err);
+      if (!prev) return next(new HttpError('Not Found', 404));
+
+      req._heroku_metric.count(['plan-change.from', prev, 'to', request.plan].join('.'), 1, {resource: id});
+      res.send({
+        config: config,
+        message: message
+      });
     });
   });
 
   // Deprovision
-  app.del("/resources/:id", auth, function(req, res, next){
+  app.del('/resources/:id', auth, function(req, res, next){
     debug(req.params);
-    req._heroku_metric.profile("provision-response-time");
+    var done = req._heroku_metric.profile('provision.remove');
 
-    api.remove(req.params.id, function(err, resource) {
-      req._heroku_metric.profile("provision-response-time", {err:err, fn:'remove'});
-      if(err) return next(err);
-      if(!resource) return next(new HttpError("Not Found", 404));
+    var id = req.params.id;
 
-      req._heroku_metric("deprovision", 1, "instance", {plan: resource.plan});
-      res.send("ok");
+    api.remove(id, function(err, prev) {
+      done({err: err, resource: id});
+      if (err) return next(err);
+
+      if (prev) req._heroku_metric.count('deprovision.' + prev, 1, {resource: id});
+      res.send('ok');
     });
-  });
-
-  app.get("/resources/:id", sso, function(req, res) {
-    res.redirect(req.base || "/");
-  });
-
-  app.post("/login", sso, function(req, res) {
-    res.redirect(req.base || "/");
   });
 
   return app;
