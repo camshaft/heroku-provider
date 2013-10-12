@@ -26,11 +26,23 @@ module.exports = function(api, options) {
     options.password || envs('HEROKU_PASSWORD', ''));
 
   /**
+   * Give the provider to the api
+   */
+
+  var provider = options.provider || 'heroku';
+
+  /**
+   * Give option to pass req to api
+   */
+
+  var passReq = !!options.passReq;
+
+  /**
    * Configure the app
    */
 
   app.use(function metrics(req, res, next) {
-    req._heroku_metric = (req.metric || metric).context({lib: 'heroku-provider'});
+    req._heroku_metric = (req.metric || metric).context({lib: 'heroku-provider', provider: provider});
     next();
   });
   app.use(app.router);
@@ -58,7 +70,7 @@ module.exports = function(api, options) {
       options: body.options
     };
 
-    api.create(resource, function(err, id, config) {
+    function created(err, id, config) {
       done({err: err, resource: id});
       if (err) return next(err);
       if (!id) return next(new HttpError('Resource was not created'), 500);
@@ -69,7 +81,13 @@ module.exports = function(api, options) {
         id: id,
         config: config
       });
-    });
+    }
+
+    var arity = api.create.length;
+    if (arity === 4) return api.create(req, resource, provider, created);
+    if (arity === 3 && passReq) return api.create(req, resource, created);
+    if (arity === 3) return api.create(resource, provider, created);
+    api.create(resource, created);
   });
 
   // Plan change
@@ -83,7 +101,7 @@ module.exports = function(api, options) {
       heroku_id: req.body.heroku_id
     };
 
-    api.update(id, request, function(err, prev, config, message) {
+    function updated(err, prev, config, message) {
       done({err: err, resource: id});
       if (err) return next(err);
       if (!prev) return next(new HttpError('Not Found', 404));
@@ -93,7 +111,13 @@ module.exports = function(api, options) {
         config: config,
         message: message
       });
-    });
+    }
+
+    var arity = api.update.length;
+    if (arity === 5) return api.update(req, id, request, provider, updated);
+    if (arity === 4 && passReq) return api.update(req, id, request, updated);
+    if (arity === 4) return api.update(id, request, provider, updated);
+    api.update(id, request, updated);
   });
 
   // Deprovision
@@ -103,13 +127,19 @@ module.exports = function(api, options) {
 
     var id = req.params.id;
 
-    api.remove(id, function(err, prev) {
+    function removed(err, prev) {
       done({err: err, resource: id});
       if (err) return next(err);
 
       if (prev) req._heroku_metric.count('deprovision.' + prev, 1, {resource: id});
       res.send('ok');
-    });
+    }
+
+    var arity = api.remove.length;
+    if (arity === 4) return api.remove(req, id, provider, removed);
+    if (arity === 3 && passReq) return api.remove(req, id, removed);
+    if (arity === 3) return api.remove(id, provider, removed);
+    api.remove(id, removed);
   });
 
   return app;
